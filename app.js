@@ -86,9 +86,22 @@ const catalogProducts = [
 
 const initialView = ['inbox', 'crm', 'catalog', 'settings'].includes(window.location.hash.slice(1)) ? window.location.hash.slice(1) : 'inbox';
 const storedSidebarWidth = Number.parseInt(window.localStorage.getItem('manmol-sidebar-width') || '', 10);
-const initialSidebarWidth = Number.isFinite(storedSidebarWidth) ? Math.min(320, Math.max(88, storedSidebarWidth)) : 246;
-const state = { activeView: initialView, selectedId: 'eli', search: '', filter: 'all', catalogSearch: '', catalogCategory: 'Todos', catalogSelected: [], sidebarWidth: initialSidebarWidth, toast: null };
+const SIDEBAR_COLLAPSE_AT = 208;
+const SIDEBAR_RAIL_WIDTH = 76;
+const initialSidebarWidth = Number.isFinite(storedSidebarWidth) ? (storedSidebarWidth <= SIDEBAR_COLLAPSE_AT ? SIDEBAR_RAIL_WIDTH : Math.min(320, storedSidebarWidth)) : 264;
+const storedTheme = window.localStorage.getItem('manmol-theme');
+const initialTheme = storedTheme === 'light' ? 'light' : 'dark';
+const state = { activeView: initialView, selectedId: 'eli', search: '', filter: 'all', catalogSearch: '', catalogCategory: 'Todos', catalogSelected: [], sidebarWidth: initialSidebarWidth, theme: initialTheme, toast: null };
 const app = document.querySelector('#app');
+
+function applyTheme(theme) {
+  state.theme = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = state.theme;
+  window.localStorage.setItem('manmol-theme', state.theme);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', state.theme === 'light' ? '#ffffff' : '#0a0f16');
+}
+
+applyTheme(state.theme);
 
 function initialsAvatar(person, large = false) {
   return `<div class="avatar" style="background:${person.color || '#718a9a'};${large ? 'width:54px;height:54px;font-size:15px;' : ''}">${person.initials}</div>`;
@@ -97,23 +110,23 @@ function initialsAvatar(person, large = false) {
 function statusBadge(person) { return `<span class="status ${person.statusClass}">${person.stage}</span>`; }
 
 function renderShell(content) {
-  const sidebarCollapsed = state.sidebarWidth <= 112;
+  const sidebarCollapsed = state.sidebarWidth <= SIDEBAR_COLLAPSE_AT;
   app.innerHTML = `<div class="app-shell ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}" style="--sidebar-width:${state.sidebarWidth}px">
     <aside class="sidebar ${sidebarCollapsed ? 'collapsed' : ''}">
       <div class="brand"><div class="brand-mark">M</div><div class="brand-word"><strong>ManMol</strong><span>Centro comercial</span></div></div>
-      <button class="workspace-switcher"> <div class="workspace-icon">MM</div><div class="workspace-copy"><strong>ManMol Argentina</strong><span>Equipo comercial</span></div>${icon('chevron', 14)}</button>
+      <button class="workspace-switcher" aria-label="ManMol Argentina" title="ManMol Argentina"> <div class="workspace-icon">MM</div><div class="workspace-copy"><strong>ManMol Argentina</strong><span>Equipo comercial</span></div>${icon('chevron', 14)}</button>
       <div class="nav-label">Workspace</div>
       <nav class="nav">
-        <button class="nav-button ${state.activeView === 'inbox' ? 'active' : ''}" data-view="inbox">${icon('inbox')}<span>Conversaciones</span><span class="nav-count">8</span></button>
-        <button class="nav-button ${state.activeView === 'crm' ? 'active' : ''}" data-view="crm">${icon('users')}<span>CRM de clientes</span></button>
-        <button class="nav-button ${state.activeView === 'catalog' ? 'active' : ''}" data-view="catalog">${icon('box')}<span>Catálogo y precios</span></button>
+        <button class="nav-button ${state.activeView === 'inbox' ? 'active' : ''}" data-view="inbox" aria-label="Conversaciones" title="Conversaciones">${icon('inbox')}<span>Conversaciones</span><span class="nav-count">8</span></button>
+        <button class="nav-button ${state.activeView === 'crm' ? 'active' : ''}" data-view="crm" aria-label="CRM" title="CRM">${icon('users')}<span>CRM</span></button>
+        <button class="nav-button ${state.activeView === 'catalog' ? 'active' : ''}" data-view="catalog" aria-label="Catálogo y precios" title="Catálogo y precios">${icon('box')}<span>Catálogo y precios</span></button>
       </nav>
       <div class="nav-label" style="margin-top:27px">Administración</div>
-      <nav class="nav"><button class="nav-button ${state.activeView === 'settings' ? 'active' : ''}" data-view="settings">${icon('settings')}<span>Configuración</span></button></nav>
+      <nav class="nav"><button class="nav-button ${state.activeView === 'settings' ? 'active' : ''}" data-view="settings" aria-label="Configuración" title="Configuración">${icon('settings')}<span>Configuración</span></button></nav>
       <div class="sidebar-spacer"></div>
       <div class="sidebar-help">${icon('help', 17)}<p><strong>¿Necesitás ayuda?</strong>Revisá la guía del centro comercial.</p></div>
       <div class="user-card"><div class="avatar" style="background:#527582">JP</div><div class="user-copy"><strong>Juan Pablo</strong><span>Administrador</span></div>${icon('more', 15)}</div>
-      <div class="sidebar-resizer" id="sidebar-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="88" aria-valuemax="320" aria-valuenow="${state.sidebarWidth}" aria-label="Ajustar ancho del menú" title="Arrastrá para ajustar el ancho del menú"></div>
+      <div class="sidebar-resizer" id="sidebar-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="76" aria-valuemax="320" aria-valuenow="${state.sidebarWidth}" aria-label="Ajustar ancho del menú" title="Arrastrá para ajustar el ancho del menú"></div>
     </aside>
     <main class="main">${content}</main>
   </div>`;
@@ -170,7 +183,7 @@ function getCrmRows() {
 
 function renderCrm() {
   const crmRows = getCrmRows();
-  renderShell(`${renderTopbar('Gestión comercial', 'CRM de clientes', `<button class="secondary-button" id="export-crm">${icon('download', 14)} Exportar</button><button class="primary-button" id="new-lead">${icon('plus', 14)} Nuevo lead</button>`)}<div class="crm-header"><div><p class="crm-subtitle">Seguimiento de leads, oportunidades y clientes de ManMol.</p></div></div>${renderMetrics()}<div class="crm-toolbar"><div class="search-box">${icon('search', 14)}<input id="crm-search" type="search" placeholder="Buscar por nombre, teléfono o producto" /></div><button class="select-button">Todos los estados ${icon('chevron', 13)}</button><button class="select-button">Todos los segmentos ${icon('chevron', 13)}</button><button class="icon-button" title="Filtros">${icon('filter', 15)}</button></div><div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Cliente</th><th>Interés principal</th><th>Segmento</th><th>Ubicación</th><th>Estado</th><th>Última actividad</th><th></th></tr></thead><tbody id="crm-body">${crmRows.map((person) => `<tr data-crm-row="${person.id}"><td><div class="lead-person">${initialsAvatar(person)}<div><strong>${person.name}</strong><span>${person.phone}</span></div></div></td><td><div class="interest"><strong>${person.product}</strong><span>${person.quantity}</span></div></td><td>${person.segment}</td><td>${person.location}</td><td>${statusBadge(person)}</td><td>${person.lastActivity}</td><td><button class="table-action" data-open-chat="${person.id}">Abrir chat ${icon('external', 12)}</button></td></tr>`).join('')}</tbody></table></div>`);
+  renderShell(`${renderTopbar('Gestión comercial', 'CRM', `<button class="secondary-button" id="export-crm">${icon('download', 14)} Exportar</button><button class="primary-button" id="new-lead">${icon('plus', 14)} Nuevo lead</button>`)}<div class="crm-header"><div><p class="crm-subtitle">Seguimiento de leads, oportunidades y clientes de ManMol.</p></div></div>${renderMetrics()}<div class="crm-toolbar"><div class="search-box">${icon('search', 14)}<input id="crm-search" type="search" placeholder="Buscar por nombre, teléfono o producto" /></div><button class="select-button">Todos los estados ${icon('chevron', 13)}</button><button class="select-button">Todos los segmentos ${icon('chevron', 13)}</button><button class="icon-button" title="Filtros">${icon('filter', 15)}</button></div><div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Cliente</th><th>Interés principal</th><th>Segmento</th><th>Ubicación</th><th>Estado</th><th>Última actividad</th><th></th></tr></thead><tbody id="crm-body">${crmRows.map((person) => `<tr data-crm-row="${person.id}"><td><div class="lead-person">${initialsAvatar(person)}<div><strong>${person.name}</strong><span>${person.phone}</span></div></div></td><td><div class="interest"><strong>${person.product}</strong><span>${person.quantity}</span></div></td><td>${person.segment}</td><td>${person.location}</td><td>${statusBadge(person)}</td><td>${person.lastActivity}</td><td><button class="table-action" data-open-chat="${person.id}">Abrir chat ${icon('external', 12)}</button></td></tr>`).join('')}</tbody></table></div>`);
 }
 
 function freshnessBadge(product) {
@@ -333,10 +346,8 @@ function openBulkPriceEditor() {
   });
 }
 
-function renderPlaceholder(view) {
-  const labels = { catalog: ['Catálogo y precios', 'Productos, stock y reglas de cotización'], settings: ['Configuración', 'Canales, usuarios y reglas de atención'] };
-  const [title, subtitle] = labels[view];
-  renderShell(`${renderTopbar('Próximamente', title)}<div class="empty-state" style="margin-top:80px"><div class="metric-icon" style="margin:0 auto 15px;color:var(--orange);background:var(--orange-soft);width:48px;height:48px">${icon(view === 'catalog' ? 'box' : 'settings', 23)}</div><strong>${title}</strong><span>${subtitle}. Esta sección queda preparada para la siguiente iteración.</span></div>`);
+function renderSettings() {
+  renderShell(`${renderTopbar('Preferencias', 'Configuración')}<section class="settings-section" aria-labelledby="appearance-title"><div class="settings-heading"><div><h2 id="appearance-title">Apariencia</h2><p>Elegí cómo querés ver ManMol. La preferencia se guarda en este navegador.</p></div></div><div class="theme-options" role="group" aria-label="Modo de visualización"><label class="theme-choice"><input type="radio" name="theme" value="light" ${state.theme === 'light' ? 'checked' : ''} /><span class="theme-preview theme-preview-light" aria-hidden="true"><span class="preview-rail"></span><span class="preview-body"><span class="preview-heading"></span><span class="preview-card"></span><span class="preview-card short"></span></span></span><span class="theme-choice-copy"><strong>Modo claro</strong><small>Superficies blancas y azul Blyndtek</small></span></label><label class="theme-choice"><input type="radio" name="theme" value="dark" ${state.theme === 'dark' ? 'checked' : ''} /><span class="theme-preview theme-preview-dark" aria-hidden="true"><span class="preview-rail"></span><span class="preview-body"><span class="preview-heading"></span><span class="preview-card"></span><span class="preview-card short"></span></span></span><span class="theme-choice-copy"><strong>Modo oscuro</strong><small>Contraste alto con el mismo azul de marca</small></span></label></div></section>`);
 }
 
 function showToast(message) {
@@ -357,15 +368,16 @@ function bindSidebarResizer() {
   let startWidth = state.sidebarWidth;
 
   const applyWidth = (width) => {
-    state.sidebarWidth = Math.min(320, Math.max(88, Math.round(width)));
+    state.sidebarWidth = Math.min(320, Math.max(SIDEBAR_RAIL_WIDTH, Math.round(width)));
     window.localStorage.setItem('manmol-sidebar-width', String(state.sidebarWidth));
     shell.style.setProperty('--sidebar-width', `${state.sidebarWidth}px`);
-    shell.classList.toggle('sidebar-is-collapsed', state.sidebarWidth <= 112);
-    shell.querySelector('.sidebar')?.classList.toggle('collapsed', state.sidebarWidth <= 112);
+    shell.classList.toggle('sidebar-is-collapsed', state.sidebarWidth <= SIDEBAR_COLLAPSE_AT);
+    shell.querySelector('.sidebar')?.classList.toggle('collapsed', state.sidebarWidth <= SIDEBAR_COLLAPSE_AT);
     resizer.setAttribute('aria-valuenow', String(state.sidebarWidth));
   };
 
   const stopResize = () => {
+    if (state.sidebarWidth <= SIDEBAR_COLLAPSE_AT) applyWidth(SIDEBAR_RAIL_WIDTH);
     document.body.classList.remove('resizing-sidebar');
     window.removeEventListener('pointermove', moveResize);
     window.removeEventListener('pointerup', stopResize);
@@ -381,11 +393,11 @@ function bindSidebarResizer() {
     window.addEventListener('pointerup', stopResize, { once: true });
     event.preventDefault();
   });
-  resizer.addEventListener('dblclick', () => applyWidth(246));
+  resizer.addEventListener('dblclick', () => applyWidth(264));
   resizer.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowLeft') { applyWidth(state.sidebarWidth - 12); event.preventDefault(); }
-    if (event.key === 'ArrowRight') { applyWidth(state.sidebarWidth + 12); event.preventDefault(); }
-    if (event.key === 'Home') { applyWidth(88); event.preventDefault(); }
+    if (event.key === 'ArrowLeft') { applyWidth(state.sidebarWidth - 12); if (state.sidebarWidth <= SIDEBAR_COLLAPSE_AT) applyWidth(SIDEBAR_RAIL_WIDTH); event.preventDefault(); }
+    if (event.key === 'ArrowRight') { applyWidth(state.sidebarWidth === SIDEBAR_RAIL_WIDTH ? SIDEBAR_COLLAPSE_AT + 12 : state.sidebarWidth + 12); event.preventDefault(); }
+    if (event.key === 'Home') { applyWidth(SIDEBAR_RAIL_WIDTH); event.preventDefault(); }
     if (event.key === 'End') { applyWidth(320); event.preventDefault(); }
   });
 }
@@ -394,10 +406,15 @@ function bindShellEvents() {
   bindSidebarResizer();
   document.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => {
     state.activeView = button.dataset.view;
+    window.location.hash = state.activeView;
     if (state.activeView === 'inbox') renderInbox();
     else if (state.activeView === 'crm') renderCrm();
     else if (state.activeView === 'catalog') renderCatalog();
-    else renderPlaceholder(state.activeView);
+    else renderSettings();
+  }));
+
+  document.querySelectorAll('input[name="theme"]').forEach((input) => input.addEventListener('change', () => {
+    if (input.checked) applyTheme(input.value);
   }));
 
   document.querySelectorAll('[data-conversation]').forEach((button) => button.addEventListener('click', () => {
@@ -475,4 +492,4 @@ function bindShellEvents() {
 if (state.activeView === 'inbox') renderInbox();
 else if (state.activeView === 'crm') renderCrm();
 else if (state.activeView === 'catalog') renderCatalog();
-else renderPlaceholder(state.activeView);
+else renderSettings();
