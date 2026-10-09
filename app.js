@@ -72,7 +72,7 @@ conversations.forEach((person) => { if (typeof person.aiEnabled !== 'boolean') p
 
 const catalogProducts = [
   { id: 'cemento-superwhite', name: 'Cemento blanco Super White', category: 'Cemento', unit: 'Bolsa 25 kg', price: 'USD 17', iva: 'No incluido', stock: 'Consultar', updated: '23/09/2026', freshness: 'review', note: 'Precio de referencia tomado de las conversaciones.' },
-  { id: 'cemento-premium', name: 'Cemento blanco Premium Pro White', category: 'Cemento', unit: 'Bolsa 25 kg', price: 'USD 20', iva: 'No incluido', stock: 'Consultar', updated: '23/09/2026', freshness: 'review', note: 'Validar precio antes de cotizar.' },
+  { id: 'cemento-premium', name: 'Cemento blanco Premium Pro White', category: 'Cemento', unit: 'Bolsa 25 kg', price: 'USD 20', iva: 'No incluido', stock: 'Consultar', updated: '23/09/2026', freshness: 'review', note: 'Jero debe validar esta referencia antes de ofrecerla.' },
   { id: 'bolson-cemento', name: 'Bolsón de cemento OYAK', category: 'Cemento', unit: 'Bolsón 1,5 t', price: 'A cargar', iva: 'No incluido', stock: 'Consultar', updated: 'Sin actualizar', freshness: 'missing', note: 'El bot debe derivar a un asesor.' },
   { id: 'venecita-azul', name: 'Venecita Azul Mixto', category: 'Revestimientos', unit: 'Caja 2 m² · 16 kg', price: 'A cargar', iva: 'No incluido', stock: 'Consultar', updated: 'Sin actualizar', freshness: 'missing', note: 'Precio por caja o por m².' },
   { id: 'venecita-teal', name: 'Venecita Teal', category: 'Revestimientos', unit: 'Caja 2 m² · 16 kg', price: 'A cargar', iva: 'No incluido', stock: 'Consultar', updated: 'Sin actualizar', freshness: 'missing', note: 'Precio por caja o por m².' },
@@ -83,6 +83,38 @@ const catalogProducts = [
   { id: 'filtro-mgi', name: 'Filtro Serie V · MGI Pool', category: 'Filtros', unit: 'Unidad', price: 'A cargar', iva: 'No incluido', stock: 'Consultar', updated: 'Sin actualizar', freshness: 'missing', note: 'Válvula de 6 posiciones.' },
   { id: 'bomba-rowa', name: 'Bomba Rowa Tempo 5/1 STE', category: 'Bombas', unit: 'Unidad', price: 'A cargar', iva: 'No incluido', stock: 'Consultar', updated: 'Sin actualizar', freshness: 'missing', note: '0,5 HP · 40 L/min · 35 m.' },
 ];
+
+const exampleOrderItems = {
+  mariana: [
+    { material: 'Venecita Malawi celeste', quantity: '10 cajas' },
+    { material: 'Pegamento (modelo a confirmar)', quantity: '1 bolsa' },
+    { material: 'Pastina (color a confirmar)', quantity: '2 unidades' },
+  ],
+  gustavo: [
+    { material: 'Piedra 0/1', quantity: 'Por bolsón' },
+    { material: 'Marmolina', quantity: 'Por bolsón' },
+  ],
+};
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+}
+
+function normalizeMaterial(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+}
+
+function findCatalogMatch(material) {
+  return catalogProducts.find((product) => normalizeMaterial(product.name) === normalizeMaterial(material));
+}
+
+function internalPrice(item) {
+  const product = findCatalogMatch(item.material);
+  if (!product) return { value: 'Sin coincidencia exacta', detail: 'Jero debe asociar el producto del catálogo' };
+  if (product.price === 'A cargar') return { value: 'Sin precio cargado', detail: 'Jero debe confirmarlo' };
+  const status = product.freshness === 'fresh' ? 'Actualizado' : 'Referencia · revisar';
+  return { value: `${product.price} / ${product.unit}`, detail: `${status} · ${product.updated} · IVA ${product.iva.toLowerCase()}` };
+}
 
 const initialView = ['inbox', 'crm', 'catalog', 'settings'].includes(window.location.hash.slice(1)) ? window.location.hash.slice(1) : 'inbox';
 const storedSidebarWidth = Number.parseInt(window.localStorage.getItem('manmol-sidebar-width') || '', 10);
@@ -162,10 +194,19 @@ function renderMessages(person) {
   return `<div class="messages"><div class="day-divider">Hoy, 29 de septiembre</div>${person.messages.map(([direction, text, time]) => `<div class="message-row ${direction === 'out' ? 'outgoing' : ''}"><div class="message-bubble">${text}<span class="message-time">${time}${direction === 'out' ? ' ✓✓' : ''}</span></div></div>`).join('')}</div>`;
 }
 
+function renderHandoff(person) {
+  if (!person.handoff) return `<div class="handoff-prompt"><span>Flujo previsto: el bot reúne el pedido; Jero confirma el precio y cierra la venta.</span><button class="secondary-button" id="prepare-handoff">Preparar pedido para Jero</button></div>`;
+  const rows = person.handoff.items.map((item) => {
+    const price = item.priceSnapshot || internalPrice(item);
+    return `<tr><td>${escapeHtml(item.material)}</td><td>${escapeHtml(item.quantity)}</td><td><strong>${escapeHtml(price.value)}</strong><small>${escapeHtml(price.detail)}</small></td></tr>`;
+  }).join('');
+  return `<aside class="handoff-card" aria-label="Pedido interno para Jero"><div class="handoff-card-head"><div><strong>Pedido para Jero</strong><span>Preparado ${escapeHtml(person.handoff.createdAt || 'en esta demo')} · no enviado por WhatsApp</span></div><button class="secondary-button" id="prepare-handoff">Editar pedido</button></div><p>Hola Jero, te paso el contacto que solicita estos materiales y estas cantidades:</p><div class="handoff-contact"><strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(person.phone)} · ${escapeHtml(person.location)}</span></div><div class="handoff-table-wrap"><table class="handoff-table"><thead><tr><th>Material</th><th>Cantidad</th><th>Precio interno del catálogo</th></tr></thead><tbody>${rows}</tbody></table></div>${person.handoff.note ? `<p class="handoff-note">Observaciones: ${escapeHtml(person.handoff.note)}</p>` : ''}<p class="handoff-disclaimer">Precios solo para Jero; las referencias sin validar no son cotizaciones.</p></aside>`;
+}
+
 function renderChat(person) {
   const closed = person.statusClass === 'won';
   const aiEnabled = person.aiEnabled !== false;
-  return `<section class="chat-panel"><div class="chat-heading">${initialsAvatar(person)}<div class="chat-person"><strong>${person.name}</strong><span>${person.phone} · ${person.role}</span></div><div class="ai-control ${aiEnabled ? '' : 'paused'}"><div><strong>IA del chat</strong><span>${aiEnabled ? 'Activa' : 'Pausada'}</span></div><button class="toggle ${aiEnabled ? 'on' : ''}" id="toggle-ai" type="button" role="switch" aria-checked="${aiEnabled}" aria-label="${aiEnabled ? 'Desactivar IA en este chat' : 'Activar IA en este chat'}" title="${aiEnabled ? 'Desactivar IA solo en este chat' : 'Activar IA solo en este chat'}"><span></span></button></div><div class="chat-actions"><button class="icon-button" title="Llamar">${icon('phone', 15)}</button><button class="secondary-button lead-button" id="open-lead">${icon('external', 13)} Abrir lead</button><button class="${closed ? 'secondary-button closed-lead' : 'primary-button'} lead-button" id="close-lead">${closed ? '✓ Lead cerrado' : 'Cerrar lead'}</button><button class="icon-button" title="Más acciones">${icon('more', 16)}</button></div></div>${aiEnabled ? '' : '<div class="ai-paused-notice"><span class="ai-paused-dot"></span><strong>IA pausada en este chat</strong><span>El equipo responde manualmente hasta volver a activarla.</span></div>'}<div class="chat-context"><span>Interés:</span><strong>${person.product}</strong><span class="context-pill">${person.stage}</span></div><div class="lead-quick-details"><span><small>Cantidad</small><strong>${person.quantity}</strong></span><span><small>Ubicación</small><strong>${person.location}</strong></span><span><small>Etiquetas</small><strong>${person.tags.slice(0, 2).join(' · ')}</strong></span></div>${renderMessages(person)}<div class="composer ${aiEnabled ? '' : 'composer-manual'}"><button class="icon-button" title="Adjuntar">${icon('paperclip', 16)}</button><textarea id="message-draft" placeholder="${aiEnabled ? 'Escribí un mensaje...' : 'Escribí una respuesta manual...'}"></textarea><button class="primary-button send-button" id="send-message" title="Enviar">${icon('send', 15)}</button></div></section>`;
+  return `<section class="chat-panel"><div class="chat-heading">${initialsAvatar(person)}<div class="chat-person"><strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(person.phone)} · ${escapeHtml(person.role)}</span></div><div class="ai-control ${aiEnabled ? '' : 'paused'}"><div><strong>IA del chat</strong><span>${aiEnabled ? 'Activa' : 'Pausada'}</span></div><button class="toggle ${aiEnabled ? 'on' : ''}" id="toggle-ai" type="button" role="switch" aria-checked="${aiEnabled}" aria-label="${aiEnabled ? 'Desactivar IA en este chat' : 'Activar IA solo en este chat'}" title="${aiEnabled ? 'Desactivar IA solo en este chat' : 'Activar IA solo en este chat'}"><span></span></button></div><div class="chat-actions"><button class="icon-button" title="Llamar">${icon('phone', 15)}</button><button class="secondary-button lead-button" id="open-lead">${icon('external', 13)} Abrir lead</button><button class="${closed ? 'secondary-button closed-lead' : 'primary-button'} lead-button" id="close-lead">${closed ? '✓ OC confirmada' : 'Confirmar OC'}</button><button class="icon-button" title="Más acciones">${icon('more', 16)}</button></div></div>${aiEnabled ? '' : '<div class="ai-paused-notice"><span class="ai-paused-dot"></span><strong>IA pausada en este chat</strong><span>El equipo responde manualmente hasta volver a activarla.</span></div>'}<div class="chat-context"><span>Interés:</span><strong>${escapeHtml(person.product)}</strong><span class="context-pill">${escapeHtml(person.stage)}</span></div><div class="lead-quick-details"><span><small>Cantidad</small><strong>${escapeHtml(person.quantity)}</strong></span><span><small>Ubicación</small><strong>${escapeHtml(person.location)}</strong></span><span><small>Etiquetas</small><strong>${person.tags.slice(0, 2).map(escapeHtml).join(' · ')}</strong></span></div>${renderHandoff(person)}${renderMessages(person)}<div class="composer ${aiEnabled ? '' : 'composer-manual'}"><button class="icon-button" title="Adjuntar">${icon('paperclip', 16)}</button><textarea id="message-draft" placeholder="${aiEnabled ? 'Escribí un mensaje...' : 'Escribí una respuesta manual...'}"></textarea><button class="primary-button send-button" id="send-message" title="Enviar">${icon('send', 15)}</button></div></section>`;
 }
 
 function renderCustomerPanel(person) {
@@ -174,7 +215,7 @@ function renderCustomerPanel(person) {
 
 function renderInbox() {
   const person = conversations.find((item) => item.id === state.selectedId) || conversations[0];
-  renderShell(`${renderTopbar('WhatsApp comercial', 'Conversaciones', `<button class="primary-button" id="new-conversation">${icon('plus', 14)} Nueva conversación</button>`)}<div class="whatsapp-note"><span class="online-dot"></span><strong>Canal conectado</strong><span>WhatsApp Business · bandeja del equipo comercial</span></div><div class="inbox-layout">${renderConversationList()}${renderChat(person)}</div>`);
+  renderShell(`${renderTopbar('WhatsApp comercial', 'Conversaciones', `<button class="primary-button" id="new-conversation">${icon('plus', 14)} Nueva conversación</button>`)}<div class="whatsapp-note"><span class="demo-dot"></span><strong>Demo de WhatsApp</strong><span>La conexión real y el envío a Jero están pendientes.</span></div><div class="inbox-layout">${renderConversationList()}${renderChat(person)}</div>`);
 }
 
 function getCrmRows() {
@@ -214,11 +255,71 @@ function renderCatalog() {
   });
   const ready = catalogProducts.filter((product) => product.freshness === 'fresh').length;
   const needsReview = catalogProducts.filter((product) => product.freshness !== 'fresh').length;
-  renderShell(`${renderTopbar('Datos para cotizar', 'Catálogo y precios', `<button class="secondary-button" id="refresh-catalog">${icon('download', 14)} Importar lista</button><button class="secondary-button" id="bulk-price">${icon('chart', 14)} Ajustar precios</button><button class="primary-button" id="new-product">${icon('plus', 14)} Agregar producto</button>`)}<div class="catalog-rule">${icon('help', 15)}<div><strong>Estos son los datos que usará el bot para responder y cotizar.</strong><span>Si falta precio, unidad, IVA, stock o vigencia, el producto queda para revisión y el bot deriva a un asesor.</span></div><span class="rule-status">${ready} listos · ${needsReview} para revisar</span></div><div class="catalog-overview"><div class="catalog-stat"><span class="stat-label">Productos en catálogo</span><strong>${catalogProducts.length}</strong><span>en ${categories.length - 1} categorías</span></div><div class="catalog-stat"><span class="stat-label">Precios por revisar</span><strong class="warning-number">${needsReview}</strong><span>requieren confirmación</span></div><div class="catalog-stat"><span class="stat-label">Modo de ajuste</span><strong>Manual</strong><span>individual o masivo</span></div><div class="catalog-stat"><span class="stat-label">Última revisión</span><strong>23/09</strong><span>actualizar antes de cotizar</span></div></div><div class="catalog-toolbar"><div class="search-box">${icon('search', 14)}<input id="catalog-search" type="search" placeholder="Buscar producto, categoría o dato técnico" value="${state.catalogSearch}" /></div><div class="catalog-filters">${categories.map((category) => `<button class="catalog-filter ${state.catalogCategory === category ? 'active' : ''}" data-catalog-category="${category}">${category}</button>`).join('')}</div></div><section class="catalog-products catalog-products-full"><div class="section-heading"><div><h2>Tabla maestra de productos</h2><span>Completá los campos de cada fila para habilitar la cotización automática.</span></div><span class="table-requirements">Obligatorios: unidad · precio · moneda · IVA · stock · vigencia</span></div><div class="product-table-wrap"><table class="product-table"><thead><tr><th>Producto y alias</th><th>Presentación / dato técnico</th><th>Precio vigente</th><th>IVA</th><th>Stock</th><th>Actualización</th><th>Acción</th></tr></thead><tbody>${visibleProducts.map((product) => `<tr data-product-row="${product.id}"><td><div class="product-name"><div class="product-dot ${product.category.toLowerCase().replace('ó', 'o')}">${product.category.slice(0, 1)}</div><div><strong>${product.name}</strong><span>${product.category}</span></div></div></td><td><div class="product-detail"><strong>${product.unit}</strong><span>${product.note}</span></div></td><td><strong class="product-price ${product.price === 'A cargar' ? 'not-loaded' : ''}">${product.price}</strong></td><td>${product.iva}</td><td>${product.stock}</td><td><div>${freshnessBadge(product)}<span class="updated-date">${product.updated}</span></div></td><td><button class="table-action edit-product" data-edit-product="${product.id}">Editar</button></td></tr>`).join('')}</tbody></table>${visibleProducts.length === 0 ? '<div class="empty-state"><strong>Sin productos</strong>Probá con otra búsqueda o categoría.</div>' : ''}</div></section>`);
+  renderShell(`${renderTopbar('Datos internos de venta', 'Catálogo y precios', `<button class="secondary-button" id="refresh-catalog">${icon('download', 14)} Importar lista</button><button class="secondary-button" id="bulk-price">${icon('chart', 14)} Ajustar precios</button><button class="primary-button" id="new-product">${icon('plus', 14)} Agregar producto</button>`)}<div class="catalog-rule">${icon('help', 15)}<div><strong>Los precios del catálogo son para Jero y el equipo comercial.</strong><span>El bot identifica materiales y cantidades, pero no comunica precios al cliente ni cierra la venta.</span></div><span class="rule-status">${ready} actualizados · ${needsReview} para revisar</span></div><div class="catalog-overview"><div class="catalog-stat"><span class="stat-label">Productos en catálogo</span><strong>${catalogProducts.length}</strong><span>en ${categories.length - 1} categorías</span></div><div class="catalog-stat"><span class="stat-label">Precios por revisar</span><strong class="warning-number">${needsReview}</strong><span>requieren confirmación</span></div><div class="catalog-stat"><span class="stat-label">Modo de ajuste</span><strong>Manual</strong><span>individual o masivo</span></div><div class="catalog-stat"><span class="stat-label">Última revisión</span><strong>23/09</strong><span>validar antes de cerrar</span></div></div><div class="catalog-toolbar"><div class="search-box">${icon('search', 14)}<input id="catalog-search" type="search" placeholder="Buscar producto, categoría o dato técnico" value="${state.catalogSearch}" /></div><div class="catalog-filters">${categories.map((category) => `<button class="catalog-filter ${state.catalogCategory === category ? 'active' : ''}" data-catalog-category="${category}">${category}</button>`).join('')}</div></div><section class="catalog-products catalog-products-full"><div class="section-heading"><div><h2>Tabla maestra de productos</h2><span>Completá los campos para que Jero vea referencias internas confiables.</span></div><span class="table-requirements">Obligatorios: unidad · precio · moneda · IVA · stock · vigencia</span></div><div class="product-table-wrap"><table class="product-table"><thead><tr><th>Producto y alias</th><th>Presentación / dato técnico</th><th>Precio interno</th><th>IVA</th><th>Stock</th><th>Actualización</th><th>Acción</th></tr></thead><tbody>${visibleProducts.map((product) => `<tr data-product-row="${product.id}"><td><div class="product-name"><div class="product-dot ${product.category.toLowerCase().replace('ó', 'o')}">${product.category.slice(0, 1)}</div><div><strong>${product.name}</strong><span>${product.category}</span></div></div></td><td><div class="product-detail"><strong>${product.unit}</strong><span>${product.note}</span></div></td><td><strong class="product-price ${product.price === 'A cargar' ? 'not-loaded' : ''}">${product.price}</strong></td><td>${product.iva}</td><td>${product.stock}</td><td><div>${freshnessBadge(product)}<span class="updated-date">${product.updated}</span></div></td><td><button class="table-action edit-product" data-edit-product="${product.id}">Editar</button></td></tr>`).join('')}</tbody></table>${visibleProducts.length === 0 ? '<div class="empty-state"><strong>Sin productos</strong>Probá con otra búsqueda o categoría.</div>' : ''}</div></section>`);
 }
 
 function closeModal() {
   document.querySelector('.modal-backdrop')?.remove();
+}
+
+function openHandoffEditor() {
+  const person = conversations.find((item) => item.id === state.selectedId);
+  if (!person) return;
+  closeModal();
+  const starter = exampleOrderItems[person.id] || [{ material: person.product, quantity: person.quantity }];
+  let items = (person.handoff?.items || starter).map((item) => ({
+    material: item.material === 'Interés a definir' ? '' : item.material,
+    quantity: item.quantity === 'A confirmar' ? '' : item.quantity,
+  }));
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `<div class="modal-card handoff-modal"><div class="modal-heading"><div><span class="eyebrow">Traspaso comercial · demo</span><h2>Pedido para Jero</h2></div><button class="icon-button" id="close-modal" aria-label="Cerrar">×</button></div><p class="modal-help">Confirmá con el cliente materiales y cantidades antes de preparar el traspaso. Los precios son internos; Jero confirma el valor final y contacta al cliente.</p><div class="handoff-contact"><strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(person.phone)} · ${escapeHtml(person.location)}</span></div><div class="handoff-editor-rows" id="handoff-editor-rows"></div><button class="secondary-button" id="add-handoff-item" type="button">${icon('plus', 13)} Agregar material</button><datalist id="catalog-materials">${catalogProducts.map((product) => `<option value="${escapeHtml(product.name)}"></option>`).join('')}</datalist><div class="handoff-preview"><strong>Resumen interno para Jero</strong><div class="handoff-table-wrap"><table class="handoff-table"><thead><tr><th>Material</th><th>Cantidad</th><th>Precio interno del catálogo</th></tr></thead><tbody id="handoff-preview-body"></tbody></table></div></div><label class="handoff-observations">Observaciones para Jero<textarea id="handoff-note" placeholder="Envío, urgencia, color, medida o cualquier dato para el cierre">${escapeHtml(person.handoff?.note || '')}</textarea></label><label class="handoff-confirm"><input id="handoff-confirmed" type="checkbox" /><span>El cliente confirmó estos materiales y cantidades.</span></label><p class="handoff-disclaimer">Esta demo guarda el traspaso solo en pantalla. No manda mensajes a Jero ni al cliente.</p><div class="modal-footer"><button class="secondary-button" id="cancel-modal">Cancelar</button><button class="primary-button" id="save-handoff">Preparar pedido (demo)</button></div></div>`;
+  document.body.appendChild(modal);
+
+  const readItems = () => [...modal.querySelectorAll('.handoff-editor-row')].map((row) => ({
+    material: row.querySelector('.handoff-material').value.trim(),
+    quantity: row.querySelector('.handoff-quantity').value.trim(),
+  }));
+  const updatePreview = () => {
+    const current = readItems();
+    modal.querySelector('#handoff-preview-body').innerHTML = current.map((item) => {
+      const price = internalPrice(item);
+      return `<tr><td>${escapeHtml(item.material || 'A definir')}</td><td>${escapeHtml(item.quantity || 'A definir')}</td><td><strong>${escapeHtml(price.value)}</strong><small>${escapeHtml(price.detail)}</small></td></tr>`;
+    }).join('');
+  };
+  const renderRows = () => {
+    modal.querySelector('#handoff-editor-rows').innerHTML = items.map((item, index) => `<div class="handoff-editor-row"><label>Material<input class="handoff-material" list="catalog-materials" value="${escapeHtml(item.material)}" placeholder="Producto y variante" /></label><label>Cantidad y unidad<input class="handoff-quantity" value="${escapeHtml(item.quantity)}" placeholder="Ej. 10 cajas" /></label><button class="icon-button remove-handoff-item" type="button" data-index="${index}" aria-label="Quitar material" title="Quitar material">×</button></div>`).join('');
+    modal.querySelectorAll('.handoff-editor-row input').forEach((input) => input.addEventListener('input', updatePreview));
+    modal.querySelectorAll('.remove-handoff-item').forEach((button) => button.addEventListener('click', () => {
+      if (items.length === 1) return showToast('El pedido necesita al menos un material');
+      items = readItems().filter((_, index) => index !== Number(button.dataset.index));
+      renderRows();
+    }));
+    updatePreview();
+  };
+
+  modal.querySelector('#close-modal').addEventListener('click', closeModal);
+  modal.querySelector('#cancel-modal').addEventListener('click', closeModal);
+  modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+  modal.querySelector('#add-handoff-item').addEventListener('click', () => {
+    items = [...readItems(), { material: '', quantity: '' }];
+    renderRows();
+    modal.querySelector('.handoff-editor-row:last-child .handoff-material')?.focus();
+  });
+  modal.querySelector('#save-handoff').addEventListener('click', () => {
+    const confirmedItems = readItems();
+    if (confirmedItems.some((item) => !item.material || !item.quantity)) return showToast('Completá el material y la cantidad de cada fila');
+    if (!modal.querySelector('#handoff-confirmed').checked) return showToast('Confirmá que el cliente validó el pedido');
+    person.handoff = { assignee: 'Jero', items: confirmedItems.map((item) => ({ ...item, priceSnapshot: internalPrice(item) })), note: modal.querySelector('#handoff-note').value.trim(), createdAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) };
+    person.aiEnabled = false;
+    if (person.statusClass !== 'won') { person.stage = 'Para Jero'; person.statusClass = 'assigned'; }
+    person.nextAction = 'Jero contacta al cliente';
+    closeModal();
+    renderInbox();
+    showToast('Pedido preparado en la demo. No se envió a Jero.');
+  });
+  renderRows();
+  modal.querySelector('.handoff-material')?.focus();
 }
 
 function openNewLeadEditor() {
@@ -246,6 +347,7 @@ function openNewLeadEditor() {
     });
     state.selectedId = id;
     state.activeView = 'inbox';
+    window.location.hash = 'inbox';
     closeModal();
     renderInbox();
     document.querySelector('#message-draft')?.focus();
@@ -260,23 +362,27 @@ function openProductEditor(id) {
   closeModal();
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
-  modal.innerHTML = `<div class="modal-card"><div class="modal-heading"><div><span class="eyebrow">Actualizar catálogo</span><h2>${product.name}</h2></div><button class="icon-button" id="close-modal">×</button></div><p class="modal-help">Al guardar, el bot podrá utilizar este precio en sus cotizaciones automáticas.</p><div class="form-grid"><label>Precio<input id="edit-price" value="${product.price === 'A cargar' ? '' : product.price}" placeholder="Ej. USD 17 o $ 26.700" /></label><label>Unidad<select id="edit-unit"><option ${product.unit === 'Bolsa 25 kg' ? 'selected' : ''}>Bolsa 25 kg</option><option ${product.unit === 'Caja 2 m² · 16 kg' ? 'selected' : ''}>Caja 2 m² · 16 kg</option><option ${product.unit === 'm²' ? 'selected' : ''}>m²</option><option ${product.unit === 'Bolsón 1,5 t' ? 'selected' : ''}>Bolsón 1,5 t</option><option ${product.unit === 'Unidad' ? 'selected' : ''}>Unidad</option><option ${product.unit === 'Bolsa / bolsón' ? 'selected' : ''}>Bolsa / bolsón</option></select></label><label>IVA<select id="edit-iva"><option ${product.iva === 'No incluido' ? 'selected' : ''}>No incluido</option><option ${product.iva === 'Incluido' ? 'selected' : ''}>Incluido</option><option>Consultar</option></select></label><label>Stock<input id="edit-stock" value="${product.stock === 'Consultar' ? '' : product.stock}" placeholder="Ej. 20 unidades o Consultar" /></label></div><div class="modal-footer"><button class="secondary-button" id="cancel-modal">Cancelar</button><button class="primary-button" id="save-product">Guardar y marcar actualizado</button></div></div>`;
+  modal.innerHTML = `<div class="modal-card"><div class="modal-heading"><div><span class="eyebrow">Actualizar catálogo</span><h2>${product.name}</h2></div><button class="icon-button" id="close-modal">×</button></div><p class="modal-help">Este precio será una referencia interna para Jero. El bot no lo comunicará al cliente.</p><div class="form-grid"><label>Precio<input id="edit-price" value="${product.price === 'A cargar' ? '' : product.price}" placeholder="Ej. USD 17 o $ 26.700" /></label><label>Unidad<select id="edit-unit"><option ${product.unit === 'Bolsa 25 kg' ? 'selected' : ''}>Bolsa 25 kg</option><option ${product.unit === 'Caja 2 m² · 16 kg' ? 'selected' : ''}>Caja 2 m² · 16 kg</option><option ${product.unit === 'm²' ? 'selected' : ''}>m²</option><option ${product.unit === 'Bolsón 1,5 t' ? 'selected' : ''}>Bolsón 1,5 t</option><option ${product.unit === 'Unidad' ? 'selected' : ''}>Unidad</option><option ${product.unit === 'Bolsa / bolsón' ? 'selected' : ''}>Bolsa / bolsón</option></select></label><label>IVA<select id="edit-iva"><option ${product.iva === 'No incluido' ? 'selected' : ''}>No incluido</option><option ${product.iva === 'Incluido' ? 'selected' : ''}>Incluido</option><option>Consultar</option></select></label><label>Stock<input id="edit-stock" value="${product.stock === 'Consultar' ? '' : product.stock}" placeholder="Ej. 20 unidades o Consultar" /></label></div><label class="handoff-confirm"><input id="catalog-confirmed" type="checkbox" /><span>Confirmo que precio, unidad, IVA, stock y vigencia son actuales.</span></label><div class="modal-footer"><button class="secondary-button" id="cancel-modal">Cancelar</button><button class="primary-button" id="save-product">Guardar precio interno</button></div></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#close-modal').addEventListener('click', closeModal);
   modal.querySelector('#cancel-modal').addEventListener('click', closeModal);
   modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
   modal.querySelector('#save-product').addEventListener('click', () => {
     const price = modal.querySelector('#edit-price').value.trim();
-    if (!price) { modal.querySelector('#edit-price').focus(); showToast('Cargá un precio antes de marcarlo actualizado'); return; }
+    if (!price) { modal.querySelector('#edit-price').focus(); showToast('Cargá un precio para guardar la referencia'); return; }
+    const confirmed = modal.querySelector('#catalog-confirmed').checked;
+    const iva = modal.querySelector('#edit-iva').value;
+    const stock = modal.querySelector('#edit-stock').value.trim() || 'Consultar';
+    if (confirmed && (iva === 'Consultar' || stock === 'Consultar')) return showToast('Completá IVA y stock para marcar el precio actualizado');
     product.price = price;
     product.unit = modal.querySelector('#edit-unit').value;
-    product.iva = modal.querySelector('#edit-iva').value;
-    product.stock = modal.querySelector('#edit-stock').value.trim() || 'Consultar';
+    product.iva = iva;
+    product.stock = stock;
     product.updated = 'Ahora';
-    product.freshness = 'fresh';
+    product.freshness = confirmed ? 'fresh' : 'review';
     closeModal();
     renderCatalog();
-    showToast('Producto actualizado: el bot ya puede cotizarlo');
+    showToast(confirmed ? 'Precio interno confirmado para Jero' : 'Precio interno guardado como referencia para revisar');
   });
 }
 
@@ -444,8 +550,9 @@ function bindShellEvents() {
     showToast('Mensaje agregado a la conversación demo');
   });
 
-  document.querySelector('#open-crm')?.addEventListener('click', () => { state.activeView = 'crm'; renderCrm(); });
-  document.querySelector('#open-lead')?.addEventListener('click', () => { state.activeView = 'crm'; renderCrm(); });
+  document.querySelector('#open-crm')?.addEventListener('click', () => { state.activeView = 'crm'; window.location.hash = 'crm'; renderCrm(); });
+  document.querySelector('#open-lead')?.addEventListener('click', () => { state.activeView = 'crm'; window.location.hash = 'crm'; renderCrm(); });
+  document.querySelector('#prepare-handoff')?.addEventListener('click', openHandoffEditor);
   document.querySelector('#toggle-ai')?.addEventListener('click', () => {
     const person = conversations.find((item) => item.id === state.selectedId);
     if (!person) return;
@@ -456,11 +563,12 @@ function bindShellEvents() {
   document.querySelector('#close-lead')?.addEventListener('click', () => {
     const person = conversations.find((item) => item.id === state.selectedId);
     if (!person || person.statusClass === 'won') return;
-    person.stage = 'Ganado';
+    if (!person.handoff) return showToast('Prepará primero el pedido para Jero');
+    person.stage = 'OC confirmada';
     person.statusClass = 'won';
-    person.nextAction = 'Cliente cerrado';
+    person.nextAction = 'Cliente con OC confirmada';
     renderInbox();
-    showToast('Lead cerrado y guardado como ganado');
+    showToast('OC confirmada: el lead ahora es cliente en la demo');
   });
   document.querySelector('#new-conversation')?.addEventListener('click', () => showToast('La creación de conversaciones se conectará a WhatsApp Business'));
   document.querySelector('#new-lead')?.addEventListener('click', openNewLeadEditor);
@@ -472,7 +580,7 @@ function bindShellEvents() {
     document.querySelectorAll('[data-crm-row]').forEach((row) => { row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none'; });
   });
 
-  document.querySelectorAll('[data-open-chat]').forEach((button) => button.addEventListener('click', () => { state.selectedId = button.dataset.openChat; state.activeView = 'inbox'; renderInbox(); }));
+  document.querySelectorAll('[data-open-chat]').forEach((button) => button.addEventListener('click', () => { state.selectedId = button.dataset.openChat; state.activeView = 'inbox'; window.location.hash = 'inbox'; renderInbox(); }));
 
   const catalogSearch = document.querySelector('#catalog-search');
   if (catalogSearch) catalogSearch.addEventListener('input', (event) => {

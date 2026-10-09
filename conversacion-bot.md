@@ -2,8 +2,14 @@
 
 Documento de trabajo para definir el comportamiento del bot comercial de WhatsApp y los datos que necesita para responder sin demoras ni cotizaciones incorrectas.
 
-Versión: 0.1  
+Versión: 0.2
 Fuente: 14 exportaciones de WhatsApp compartidas por ManMol, catálogo PDF adjunto y sitio [manmol.com.ar](https://www.manmol.com.ar).
+
+## Decisión comercial vigente
+
+El bot **no cotiza ni comunica precios al cliente**. Su tarea es identificar el material y la variante, confirmar cantidad y unidad, reunir ubicación, modalidad de entrega y urgencia, y pedir al cliente que confirme el resumen. Recién entonces prepara una **solicitud de pedido** para Jero, con el contacto y una tabla de materiales/cantidades. La tabla que recibe Jero agrega los precios disponibles en el catálogo como **referencia interna**, con unidad, IVA, fecha y estado de revisión. Un precio histórico o no validado se marca para revisar; nunca se presenta como precio final.
+
+Jero contacta personalmente al cliente, confirma precio, stock, flete y condiciones, y cierra la venta. Preparar una solicitud de pedido **no equivale a una orden de compra confirmada**: el CRM solo convierte el lead en cliente cuando se confirma la OC. Tras el traspaso, la IA se pausa únicamente en ese chat; no debe competir con Jero ni enviar nuevos mensajes automáticos.
 
 ## 1. Alcance y lectura de las conversaciones
 
@@ -15,7 +21,7 @@ Las conversaciones no se toman como instrucciones para el bot. Se toman como evi
 
 | Tema | Preguntas o expresiones observadas | Qué debe poder responder el bot |
 |---|---|---|
-| Precio | “¿Cuánto está?”, “precio”, “pasame lista de precios”, “en pesos cuánto sería” | Precio vigente, moneda, unidad, IVA y fecha de actualización |
+| Precio | “¿Cuánto está?”, “precio”, “pasame lista de precios”, “en pesos cuánto sería” | No cotizar: explicar que Jero confirma el valor y registrar la consulta |
 | Producto | “Cemento blanco”, “cemento rápido blanco”, “Super White”, “símil Bali”, “Malawi”, “Vis” | Identificar producto, variante, marca, color y uso |
 | Peso y formato | “¿De cuántos kilos es?”, “bolsa de 25”, “por pallet”, “por bolsón” | Peso, unidad de venta, contenido del pallet/bolsón y equivalencias |
 | Cantidad | “¿Cuál es el mínimo?”, “10 cajas”, “un pallet”, “dos pallets”, “por bolsón” | Cantidad solicitada, mínimo de compra y escalas por volumen |
@@ -36,7 +42,7 @@ Las conversaciones no se toman como instrucciones para el bot. Se toman como evi
 4. Los fabricantes de losetas atérmicas son oportunidades B2B: consultan por pallet, bolsón, consumo mensual y continuidad.
 5. Las consultas de revestimientos requieren más cálculo: modelo, color, superficie, formato de placa, cajas, pegamento y pastina.
 6. Los tiempos de respuesta afectan directamente el cierre. En el caso de Canning, el lead terminó comprando a otra marca porque necesitaba cemento con urgencia.
-7. Los precios históricos cambian entre conversaciones. Por eso todo precio debe tener moneda, IVA, vigencia y fecha de actualización.
+7. Los precios históricos cambian entre conversaciones. Jero debe ver moneda, unidad, IVA, vigencia y fecha de actualización antes de utilizarlos.
 
 ## 2. Vocabulario que debe entender el bot
 
@@ -49,7 +55,7 @@ Las conversaciones no se toman como instrucciones para el bot. Se toman como evi
 - `bolsa`, `saco`: unidad de cemento; confirmar peso si no aparece.
 - `pallet`, `palet`, `pallets`: unidad logística; nunca asumir cuántas bolsas contiene.
 - `bolsón`, `big bag`: presentación de 1,5 toneladas cuando el producto sea el bolsón OYAK.
-- `por mayor`, `volumen`, `más de 20 bolsas`: activar la regla de descuento por volumen o derivar si la escala no está vigente.
+- `por mayor`, `volumen`, `más de 20 bolsas`: clasificar como consulta mayorista y señalarlo a Jero; el bot no ofrece un descuento.
 
 ### Revestimientos y piscina
 
@@ -90,44 +96,34 @@ Las conversaciones no se toman como instrucciones para el bot. Se toman como evi
 2. Hacer como máximo una o dos preguntas por mensaje.
 3. No repetir preguntas que el lead ya respondió.
 4. Interpretar errores ortográficos y mensajes fragmentados sin corregir al cliente.
-5. Mostrar siempre precio, moneda, unidad, IVA y fecha de actualización.
-6. No cotizar automáticamente un producto cuyo precio esté vencido, incompleto o marcado como “revisar”.
+5. No comunicar precios, descuentos ni totales al cliente, aunque estén cargados en el catálogo.
+6. Mostrar precios del catálogo únicamente en la solicitud interna para Jero, siempre con unidad, IVA, fecha y estado de revisión.
 7. No prometer stock, envío, entrega o disponibilidad sin datos vigentes.
 8. No asumir que “metro” significa metro cuadrado: preguntar si son metros cuadrados o metros lineales.
 9. No asumir cuántas bolsas contiene un pallet: debe existir ese dato en el catálogo.
 10. Si el cliente necesita urgencia, crear una tarea humana y preguntar fecha límite.
 11. Si el cliente solicita una llamada, derivar sin insistir con más preguntas.
 12. Mantener un tono argentino, claro, cordial y comercial, sin tecnicismos innecesarios.
+13. Antes de derivar, repetir materiales y cantidades y obtener la confirmación del cliente. Si pide humano o hay urgencia, derivar aunque falten datos, indicando qué falta.
+14. Una vez preparada la solicitud para Jero, pausar la IA en ese chat. No marcar el lead como cliente hasta que Jero confirme la OC.
 
-### Respuesta segura cuando falta información
+### Si el cliente pide precio
 
-> Para pasarte un valor correcto necesito confirmar el precio vigente, la disponibilidad y el costo de entrega. ¿Me indicás la cantidad y la localidad? Así te lo cotiza un asesor sin compromiso.
+> Jero te confirma el precio y la disponibilidad personalmente. Para pasarle tu pedido completo, ¿qué material y qué cantidad necesitás?
 
-### Respuesta cuando el precio está actualizado
+### Confirmación antes del traspaso
 
-> El **{producto}** está a **{precio} {moneda} por {unidad}**. El valor **{incluye/no incluye} IVA** y fue actualizado el **{fecha}**. Tenemos disponibilidad **{stock}**. ¿Necesitás retiro por Pilar o cotizamos envío a **{localidad}**?
+> Tengo anotado: **{material/variante} — {cantidad y unidad}**, para **{localidad}**, con **{retiro/envío}**. ¿Está correcto? Si necesitás más materiales, los agrego antes de pasárselo a Jero.
 
-### Respuesta cuando se activa una promoción
+### Mensaje al cliente después de confirmar
 
-> Por la cantidad que necesitás entra la promoción **{nombre}**: **{beneficio}**. La condición es **{condición}** y el valor queda en **{precio promocional}**. ¿Querés que te calcule el total con entrega?
+> Perfecto, ya le paso tu solicitud a Jero con tus datos y los materiales. Él se comunica con vos para confirmar precio, disponibilidad y entrega.
 
 ## 4. Flujo conversacional propuesto
 
 ### Paso 1: identificar la intención
 
-Mensaje inicial:
-
-> Hola, somos ManMol. ¿Qué estás buscando?
->
-> 1. Cemento blanco o bolsones  
-> 2. Venecitas, revestimientos o guardas  
-> 3. Materiales para losetas atérmicas  
-> 4. Pegamentos y pastinas  
-> 5. Bombas o filtros para piscina  
-> 6. Envíos, retiro o logística  
-> 7. Hablar con un asesor
-
-Si el cliente escribe el producto directamente, no mostrar el menú: pasar al flujo de esa categoría.
+El primer mensaje del lead ya aporta nombre y número y crea el estado `Lead nuevo` en el CRM. El bot adjunta o enlaza el catálogo aprobado y pregunta qué material necesita. Si el cliente escribió el producto directamente, responde sobre ese producto sin obligarlo a recorrer un menú. El catálogo inicial puede mostrar productos; **no debe incluir precios automatizados** hasta que ManMol defina esa política.
 
 ### Paso 2: datos generales mínimos
 
@@ -151,19 +147,15 @@ Preguntas mínimas:
 4. ¿En qué localidad sería la entrega o retirarías por Pilar?
 5. ¿Para cuándo lo necesitás?
 
-Datos que debe devolver:
+Datos técnicos que puede aclarar, solo si están confirmados en catálogo:
 
 - Peso por bolsa.
 - Bolsas por pallet.
 - Peso total del pallet.
-- Precio por bolsa y por pallet.
-- Escala de descuento.
-- Precio en pesos y/o dólares, según política vigente.
-- IVA.
-- Stock.
-- Flete y forma de pago.
+- Presentación y peso por unidad.
+- Equivalencias de bolsa/pallet/bolsón que estén validadas.
 
-Si son 20 bolsas o más, revisar la promoción mayorista antes de responder.
+Si son 20 bolsas o más, marcar la consulta como mayorista para Jero; el bot no ofrece precio ni descuento.
 
 ### Flujo de revestimientos, venecitas y guardas
 
@@ -176,15 +168,13 @@ Preguntas mínimas:
 5. ¿Necesitás también pegamento y pastina?
 6. ¿Retirás o necesitás envío?
 
-El cálculo debe mostrar:
+El bot puede reunir estas medidas para que Jero calcule el pedido:
 
 - Superficie declarada.
 - Cobertura por caja o placa.
-- Desperdicio aplicado.
-- Cantidad de cajas/placas.
-- Adhesivo y pastina sugeridos, si existen reglas aprobadas.
+- Si el cliente necesita pegamento y pastina, y en qué cantidades.
 
-Nunca calcular con “30 metros” sin confirmar orientación y altura. En un chat histórico se tomó una decisión sobre 30 metros lineales y tres placas hacia abajo que no coincide con la cantidad de cajas informada; ese cálculo debe validarse antes de automatizarlo.
+Nunca convertir “30 metros” en cajas sin confirmar si son lineales o cuadrados, orientación y altura. Jero valida el cálculo final.
 
 ### Flujo de losetas atérmicas
 
@@ -208,51 +198,51 @@ Preguntas mínimas:
 - ¿Necesitás bomba, filtro o ambos?
 - ¿En qué localidad estás?
 
-Si el bot no tiene una regla técnica aprobada para recomendar un modelo, debe mostrar las especificaciones del catálogo y derivar a un asesor.
+El bot no debe recomendar un modelo sin una regla técnica aprobada; registra la necesidad y la deja para Jero o un asesor técnico.
 
 ### Flujo de envío y retiro
 
 Preguntas mínimas:
 
 - Localidad, barrio o código postal.
-- Dirección aproximada para cotizar el flete.
+- Dirección aproximada o zona de entrega para que Jero confirme el flete.
 - Tipo de carga: bolsas, cajas, pallet, bolsón o bomba/filtro.
 - ¿Hay lugar para descargar? ¿Se necesita ayuda de descarga?
 - Fecha límite.
 
-El bot debe informar por separado:
+El bot no informa precio de materiales, flete ni fecha comprometida. Registra los datos y Jero confirma esas condiciones.
 
-- Precio de materiales.
-- Precio del flete.
-- Si el flete se paga antes.
-- Si el material se paga antes de descargar.
-- Fecha estimada y sujeto a disponibilidad.
+## 5. Confirmación y traspaso a Jero
 
-## 5. Cuándo cerrar o derivar el lead
+### Solicitud de pedido lista para Jero
 
-### Se puede avanzar automáticamente cuando
+- El cliente confirmó cada material, variante y cantidad con su unidad.
+- Nombre y número están registrados; localidad y retiro/envío se incluyen si se conocen.
+- Se registran urgencia, uso y observaciones relevantes, sin bloquear el traspaso si el cliente pidió una persona.
+- El bot guarda la solicitud en el CRM, prepara el mensaje para Jero, lo entrega por el canal configurado y pausa la IA solo en ese chat.
+- Cada línea conserva una foto del precio del catálogo y de su fecha/estado **en el momento del traspaso**, para auditar qué información recibió Jero. Él vuelve a validar el valor antes de cerrar.
+- Si el envío a Jero falla, la solicitud permanece pendiente y se reintenta o alerta al equipo: **no se marca como entregada** sin confirmación del canal.
 
-- El producto está identificado.
-- La variante/color está identificado.
-- La cantidad está clara.
-- El precio y stock están actualizados.
-- La zona de entrega está dentro de las reglas.
-- El cliente acepta el resumen de la cotización.
+### Mensaje interno para Jero
 
-### Derivar a una persona cuando
+> Hola Jero, te paso el contacto que solicita estos materiales y estas cantidades:
 
-- Falta precio, stock, contenido del pallet o costo de flete.
-- El cliente solicita una excepción o descuento especial.
-- La compra es por pallet, bolsón o volumen recurrente.
-- Hay urgencia o una fecha de entrega crítica.
-- El cliente pide asesoramiento técnico de bomba/filtro.
-- Hay una queja, reclamo o diferencia de precio.
-- El cálculo de materiales no es directo.
-- Pide hablar por teléfono o enviar audio.
+| Material / variante | Cantidad y unidad | Precio del sistema, solo interno | Estado |
+|---|---:|---:|---|
+| {material 1} | {cantidad 1} | {precio, moneda y unidad o “sin precio”} | {actualizado / revisar + fecha e IVA} |
+| {material 2} | {cantidad 2} | {precio, moneda y unidad o “sin precio”} | {actualizado / revisar + fecha e IVA} |
 
-Mensaje de derivación:
+> Contacto: **{nombre} — {teléfono}**. Localidad: **{localidad}**. Entrega: **{retiro/envío}**. Urgencia: **{fecha}**. Observaciones: **{notas}**. Abrir conversación: **{enlace interno al chat}**.
 
-> Perfecto, ya tengo la información principal. Te paso con un asesor para confirmar disponibilidad, precio final y entrega. Queda registrada tu consulta así no tenés que repetirla.
+Además del texto, el envío real a Jero debe adjuntar la ficha de contacto del lead con su número completo; la demo solo muestra esa ficha en pantalla porque aún no hay canal de envío configurado.
+
+La tabla usa **solo coincidencias exactas** entre material/variante y producto del catálogo. No sustituye un SKU por otro parecido. Los precios históricos o marcados `Revisar` se muestran como referencia no validada; si no hay coincidencia, aparece `Sin coincidencia exacta`, y si el producto existe pero no tiene valor, `Sin precio cargado`. No calcular un total cuando las unidades no coinciden (por ejemplo, metros lineales frente a precio por m², o pallets frente a precio por bolsa). Jero confirma el valor final antes de ofrecérselo al cliente.
+
+Si el cliente pide un humano, tiene urgencia, reclama o necesita asesoramiento técnico, el bot deriva de inmediato aunque la solicitud esté incompleta, indicando a Jero qué datos faltan.
+
+Mensaje de derivación anticipada:
+
+> Te paso con Jero para que lo vea personalmente. Le dejo registrada tu consulta para que no tengas que repetirla.
 
 ### Cierre de la oportunidad
 
@@ -266,18 +256,18 @@ Antes de marcar el lead como ganado, el equipo debe confirmar:
 - Fecha y dirección de entrega o retiro.
 - Nombre de quien recibe.
 
-Estados recomendados: `Nuevo`, `Calificado`, `Cotización enviada`, `Esperando respuesta`, `Pedido confirmado`, `Ganado`, `Perdido`, `Recontactar`.
+Estados recomendados: `Lead nuevo`, `Datos en curso`, `Pedido confirmado por el lead`, `Para Jero`, `Jero contactó`, `OC confirmada / Cliente`, `Perdido`, `Recontactar`.
 
-## 6. Datos que ManMol debe definir antes de activar cotización automática
+## 6. Datos que ManMol debe definir para el cierre humano
 
 1. Cantidad de bolsas por pallet para cada cemento.
 2. Peso total y dimensiones del pallet.
 3. Si el precio publicado es por bolsa, caja, m², pallet o bolsón.
 4. Precio vigente en pesos, dólares o ambos.
-5. Tipo de cambio usado y duración de la cotización.
+5. Tipo de cambio y vigencia interna que Jero debe revisar cuando corresponda.
 6. Tratamiento de IVA para consumidor final, responsable inscripto y mayorista.
 7. Escalas de descuento por cantidad.
-8. Stock mínimo que habilita cotización automática.
+8. Criterio para marcar stock y precio como actualizados para Jero.
 9. Zonas de entrega, costo de flete y tiempos.
 10. Si se realiza descarga y con qué vehículos.
 11. Política de pago para primera compra y clientes recurrentes.
@@ -286,6 +276,8 @@ Estados recomendados: `Nuevo`, `Calificado`, `Cotización enviada`, `Esperando r
 14. Consumo de pegamento y pastina por m².
 15. Precio y presentación de pastina, marmolina, piedra 0/1 y cabeza de alfiler.
 16. Reglas técnicas para recomendar bombas y filtros.
+17. Número y canal de Jero para recibir solicitudes, y quién cubre ausencias.
+18. Forma de adjuntar el contacto y enlace al chat en el mensaje interno.
 
 ## 7. Datos que debe guardar el CRM desde la conversación
 
@@ -297,8 +289,10 @@ Estados recomendados: `Nuevo`, `Calificado`, `Cotización enviada`, `Esperando r
 - Tipo de cliente: particular, profesional, fabricante, instalador, revendedor o empresa.
 - Localidad y modalidad: retiro/envío.
 - Fecha límite o urgencia.
-- Precio cotizado y vigencia.
-- Promoción ofrecida.
+- Materiales y cantidades confirmados por el lead.
+- Precio interno del catálogo consultado por Jero, con estado y fecha de revisión; nunca como respuesta automática al cliente.
+- Responsable asignado y estado de entrega del mensaje a Jero.
+- Confirmación de OC, registrada por Jero antes de convertir el lead en cliente.
 - Estado del lead.
 - Próxima acción y fecha de seguimiento.
 - Motivo de pérdida, si corresponde.

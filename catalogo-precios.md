@@ -1,10 +1,10 @@
 # Catálogo y precios ManMol
 
-Tabla maestra de productos y reglas necesarias para que el bot pueda responder y cotizar. Los precios observados en los chats son históricos y no deben publicarse como vigentes hasta que el equipo los confirme.
+Tabla maestra de productos para que el bot identifique materiales y Jero vea referencias internas al cerrar la venta. El bot no comunica precios al cliente. Los precios observados en los chats son históricos y no deben tratarse como vigentes hasta que el equipo los confirme.
 
 ## Regla de actualización
 
-Un producto solo puede ser cotizado automáticamente si cumple todos estos requisitos:
+Jero solo debe tratar un precio como actualizado si cumple todos estos requisitos:
 
 - Precio cargado.
 - Moneda definida.
@@ -12,7 +12,7 @@ Un producto solo puede ser cotizado automáticamente si cumple todos estos requi
 - IVA definido.
 - Stock o disponibilidad confirmada.
 - Fecha de actualización vigente.
-- Vigencia de la cotización definida.
+- Fecha de vigencia o criterio de revisión definido.
 
 Estados sugeridos: `Actualizado`, `Revisar`, `Falta actualizar`, `Sin stock`, `Solo asesor`.
 
@@ -93,7 +93,7 @@ Para cada variante se debe guardar: SKU, foto, color, medidas, piezas por caja, 
 
 ## Historial de precios detectado
 
-Estos datos sirven para detectar variaciones, no para cotizar automáticamente.
+Estos datos sirven para detectar variaciones, no para ofrecer precios al cliente.
 
 | Producto | Fecha aproximada | Valor observado | Observación |
 |---|---|---:|---|
@@ -104,16 +104,9 @@ Estos datos sirven para detectar variaciones, no para cotizar automáticamente.
 | Pallet de cemento blanco | 06/09/2026 | USD 950 / $1.453.500 | Se aclaró que no incluía IVA; precio distinto al de julio |
 | Envío a Canning | 22/07/2026 | Aproximadamente $240.000 | Debe calcularse por zona, carga y fecha |
 
-## Promociones y reglas comerciales
+## Condiciones mayoristas
 
-| ID | Promoción | Condición | Beneficio observado/propuesto | Datos faltantes |
-|---|---|---|---|---|
-| PROM-CEM-20 | Descuento cemento blanco por volumen | Desde 20 bolsas | USD 17 por bolsa frente a USD 20 de referencia | Precio vigente, moneda, IVA, fecha de vigencia y si aplica a todas las marcas |
-| PROM-PISCINA | Pack inicio de piscina | Venecita + adhesivo + 2 pastinas | Precio fijo a definir | Productos exactos, cantidades, precio real, vigencia y stock conjunto |
-| PROM-LOS-AT | Pack fabricante de losetas | Cemento + piedra 0/1 + marmolina | Precio mayorista a cotizar | Fórmula de cantidades, precio por bolsón/pallet, mínimo y frecuencia |
-| PROM-RECURRENTE | Cliente recurrente | Segunda compra o consumo periódico | Precio/flete preferencial | Cantidad mínima, plazo y autorización comercial |
-
-Cada promoción debe tener: productos incluidos, condición, precio de lista, beneficio, precio final, moneda, IVA, fecha de inicio, fecha de fin, stock mínimo, si es acumulable y mensaje que el bot debe enviar.
+Los chats muestran consultas por volumen, pero **no hay promociones automáticas habilitadas**. El bot marca esas solicitudes para Jero; él valida cualquier descuento, paquete o condición especial antes de comunicarlo al cliente.
 
 ## Logística y pago
 
@@ -147,17 +140,16 @@ escalas:
   - desde: 20
     precio: 0
     tipo: unidad
-promociones: []
 vigencia_desde: null
 vigencia_hasta: null
 actualizado_en: null
-estado_bot: falta_actualizar
+estado_precio: falta_actualizar
 requiere_asesor: false
 ficha_tecnica: null
 imagenes: []
 ```
 
-## Criterio para habilitar el bot
+## Criterio para mostrar el precio interno a Jero
 
-Un producto pasa de `Revisar` a `Actualizado` solo cuando una persona confirma precio, unidad, IVA, stock y vigencia. Hasta ese momento el bot puede identificar el producto, registrar el lead y ofrecer un asesor, pero no debe inventar ni reutilizar un precio histórico.
+Un producto pasa de `Revisar` a `Actualizado` solo cuando una persona confirma precio, unidad, IVA, stock y vigencia. La solicitud para Jero puede mostrar precios marcados `Revisar` como **referencia no validada**, con fecha y unidad; si falta el valor muestra `Sin precio cargado`, y si no hay coincidencia exacta de producto muestra `Sin coincidencia exacta`. Nunca se genera un total automático con unidades incompatibles ni se envía el precio al cliente.
 
